@@ -1,16 +1,44 @@
 import os
 import shutil
+import getopt
+import sys
 
 
-baseExecDir = "./"
-baseBbDir = "./KavalAntsBB"
+baseExecDir = ".\\"
+baseBbDir = ".\\KavalAntsBB"
+	
+
+
+#Conf
+def help():
+	print "Possible arguments: GenBpFiles.py [-h] [-e DIR] [-b DIR]"
+	print " -h     Prints this message to you"
+	print " -e DIR sets the location where the generator looks for exe and dll files"
+	print " -b DIR set the location where generator looks for breakpoint files"
+	
+	
+try:                                
+	opts, args = getopt.getopt(sys.argv[1:], "he:b:", ["help"])
+except:
+	help()
+	sys.exit()
+for opt, arg in opts:
+	if opt in("-h"):
+		help()
+		sys.exit()
+	if opt in("-e"):
+		baseExecDir = arg
+		print arg
+	if opt in("-b"):
+		baseBbDir = arg		
+
 
 #Load BB files
 print "Loading all BB files"
 bbFiles = {}
 confFiles = {}
 for bbFile in os.listdir(baseBbDir):
-	f = open(baseBbDir + "/" + bbFile, "r")
+	f = open(baseBbDir + "\\" + bbFile, "r")
 	fname = f.readline().strip()
 	bbFiles[fname] = []
 	confFiles[fname] = baseBbDir + "/" + bbFile

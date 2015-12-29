@@ -1,4 +1,7 @@
 import os
+import getopt
+import sys
+import subprocess
 from winappdbg import Debug, Crash, win32, HexDump
 from time import time
 from winappdbg.util import MemoryAddresses
@@ -6,11 +9,19 @@ from winappdbg.util import MemoryAddresses
 
 
 class Coverage:
+	verbose = False
 	bbFiles = {}
 	bbFilesBreakpints = []
 	bbFilesData = {}
 	modules = []
 	fileOutput = None
+	
+	#Construct
+	def __init__(self):
+		self.debugger = Debug( bKillOnExit = True )
+		
+	def setVerbose(self, val):
+		self.verbose = val
 
 	#load basic blocks
 	def loadBB(self, baseBbDir):
@@ -29,6 +40,8 @@ class Coverage:
 				if rva > rvaHighest:
 					rvaHighest = rva
 			self.bbFilesData[fname] = [rvaHighest + 10, count]
+			if self.verbose:
+				print "Loaded breakpoints for %s with index %02X" % (fname, count)
 			count += 1
 			f.close()
 	
@@ -36,9 +49,11 @@ class Coverage:
 	def registerModule(self, filename, baseaddr):
 		if filename not in self.bbFiles:
 			return
-		print "  Image %s has breakpoints defined" % filename
+		if self.verbose:
+			print "  Image %s has breakpoints defined" % filename
 		self.modules.append([baseaddr,baseaddr+self.bbFilesData[filename][0], self.bbFilesData[filename][1]])
-		print "  Image has breakpoints from %08X to %08X with index %d" % (baseaddr,baseaddr+self.bbFilesData[filename][0],self.bbFilesData[filename][1])
+		if self.verbose:
+			print "  Image has breakpoints from %08X to %08X with index %02X" % (baseaddr,baseaddr+self.bbFilesData[filename][0],self.bbFilesData[filename][1])
 		
 	#Handle a breakpoint
 	def breakpoint(self, location):
@@ -50,6 +65,7 @@ class Coverage:
 		if index == None:
 			return None	
 		rva = location - self.modules[index][0]
+		index = self.modules[index][2]
 		if rva not in self.bbFilesBreakpints[index]:
 			return None
 		self.fileOutput.write("%02X|%08X\n" % (index, rva))
@@ -65,17 +81,16 @@ class Coverage:
 		self.fileOutput.close()		
 	
 	#Start program
-	def start(self, execFile, waitTime = 6, recFilename = "output.txt"):	
+	def start(self, execFile, waitTime = 6, recFilename = "output.txt", kill = True):	
 		self.startFileRec(recFilename)
-		debugger = Debug( bKillOnExit = True )
-		mainProc = debugger.execv( execFile, bFollow = True )
+		mainProc = self.debugger.execv( execFile, bFollow = True )
 		event = None
 		endTime = time() + waitTime
 		while time() < endTime:
 			if not mainProc.is_alive():
 				break
 			try:
-				event = debugger.wait(1000)
+				event = self.debugger.wait(1000)
 			except WindowsError, e:
 				if e.winerror in (win32.ERROR_SEM_TIMEOUT, win32.WAIT_TIMEOUT):
 					continue
@@ -83,12 +98,14 @@ class Coverage:
 			
 			if event.get_event_code() == win32.LOAD_DLL_DEBUG_EVENT:
 				module = event.get_module()
-				print "DLL %s loaded on base %08X" % (module.get_name(), module.get_base())
-				self.registerModule(module.get_name(), module.get_base())
+				if self.verbose:
+					print "DLL %s loaded on base %08X" % (module.get_name(), module.get_base())
+				self.registerModule(module.get_name()+".dll", module.get_base())
 			elif event.get_event_code() == win32.CREATE_PROCESS_DEBUG_EVENT:
 				tmp = event.get_filename().split("\\")
 				modName = tmp[len(tmp)-1]
-				print "Process %s loaded on base %08X" % (modName, event.raw.u.CreateProcessInfo.lpBaseOfImage)
+				if self.verbose:
+					print "Process %s loaded on base %08X" % (modName, event.raw.u.CreateProcessInfo.lpBaseOfImage)
 				self.registerModule(modName,event.raw.u.CreateProcessInfo.lpBaseOfImage)
 			elif event.get_event_code() == win32.EXCEPTION_DEBUG_EVENT and event.get_exception_code() == win32.STATUS_BREAKPOINT:
 				pc = event.get_thread().get_pc()-1
@@ -96,17 +113,68 @@ class Coverage:
 				if val != None:
 					event.get_process().write(pc, chr(val))
 					event.get_thread().set_pc(pc)
-			else:
-				print event.get_event_code()
-	
+					endTime = time() + waitTime
+					
 			try:
-				debugger.dispatch()
+				self.debugger.dispatch()
 			except:
 				pass
 			finally:
-				debugger.cont()
+				self.debugger.cont()
 		self.endFileRec()
+		if kill:
+			self.kill()
 		
-cov = Coverage()
-cov.loadBB("./KavalAntsBB")
-cov.start(["./Winobj.exe"], 30)
+		
+	#Kill processes
+	def kill(self):
+		pids = self.debugger.get_debugee_pids()		
+		self.debugger.detach_from_all( True )	
+		for pid in pids:				
+			try:
+				proc = self.debugger.system.get_process(pid)
+				proc.kill()
+			except:
+				pass
+			subprocess.call(["taskkill", "/f", "/pid", str(pid)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+		
+if __name__ == "__main__":
+	baseBbDir = "./KavalAntsBB"
+	waitTime = 3
+	resultFile = "./result.txt"
+	verbose = False
+
+	def help():
+		print "Possible arguments: Coverage.py [-h] [-b DIR] [-f FILE] [-T SEC] [-v] ARGS"
+		print " -h          Prints this message to you"
+		print " -b DIR      set the location where generator looks for breakpoint files"	
+		print " -f FILE     set the location where the results are written"
+		print " -t SEC      how long to keep running after last breakpoint"
+		print " -v          script shows some information"
+	
+	try:                                
+		opts, args = getopt.getopt(sys.argv[1:], "he:b:f:t:v")
+		if args == None or len(args) == 0:
+			raise "No arguments"
+	except:
+		help()
+		sys.exit()
+	for opt, arg in opts:
+		if opt in("-h"):
+			help()
+			sys.exit()
+		if opt in("-b"):
+			baseBbDir = arg	
+		if opt in("-f"):
+			resultFile = arg	
+		if opt in("-t"):
+			waitTime = int(arg)
+		if opt in("-v"):
+			verbose = True
+	
+	cov = Coverage()
+	cov.setVerbose(verbose)
+	cov.loadBB(baseBbDir)
+	cov.start(args, waitTime, resultFile)
+	cov.kill()
