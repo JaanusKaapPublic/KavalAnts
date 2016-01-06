@@ -29,7 +29,7 @@ class Coverage:
 		count = 0
 		for bbFile in os.listdir(baseBbDir):
 			f = open(baseBbDir + "/" + bbFile, "r")
-			fname = f.readline().strip()
+			fname = f.readline().strip().lower()
 			self.bbFiles[fname] = count
 			self.bbFilesBreakpints.append({})
 			rvaHighest = 0
@@ -47,6 +47,7 @@ class Coverage:
 	
 	#Register module (original exe image or dll)
 	def registerModule(self, filename, baseaddr):
+		filename = filename.lower()
 		if filename not in self.bbFiles:
 			return
 		if self.verbose:
