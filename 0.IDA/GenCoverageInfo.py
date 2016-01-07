@@ -4,7 +4,7 @@ import os
 if not os.path.exists("KavalAntsBB"):
     os.makedirs("KavalAntsBB")
 
-filename = idaapi.get_root_filename()
+filename = idaapi.get_root_filename().lower()
 base = idaapi.get_imagebase()
 BBcount = 0
 Fcount = 0
