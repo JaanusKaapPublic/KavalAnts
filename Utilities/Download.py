@@ -15,6 +15,7 @@ class Downloader:
     searchChars = ['a', 'a']
     outputDir = "downloaded_"
     downloaded = []
+    successCount = 0
     maxPerSearch = 500
     last = 0
     lastStatus = 0
@@ -53,6 +54,8 @@ class Downloader:
             with open("list_" + self.extension + ".txt") as f:
                 for line in f:
                     self.downloaded.append(line.strip())
+		if os.path.isdir(self.outputDir + self.extension):
+			self.successCount = len(os.listdir(self.outputDir + self.extension))
                      
     def readStatus(self):
         if os.path.isfile("status" + self.extension + "_" + str(len(self.searchChars)) + ".txt"): 
@@ -71,9 +74,10 @@ class Downloader:
          
     def downloadFile(self, url):
         fDir=self.outputDir + self.extension
+        local_file = None
         if not os.path.isdir(fDir):
             os.makedirs(fDir)
-             
+			             
         try:
             f = urllib2.urlopen(url, timeout=10)
              
@@ -82,7 +86,7 @@ class Downloader:
                     f.close()
                     raise          
  
-            local_file=open("%s/file%08d.%s" % (fDir, len(self.downloaded), self.extension), "wb")
+            local_file=open("%s/file%08d.%s" % (fDir, self.successCount, self.extension), "wb")
             for x in range(len(self.signature)):
                 local_file.write(chr(self.signature[x]))
             local_file.write(f.read())
@@ -91,8 +95,19 @@ class Downloader:
         except KeyboardInterrupt:
             raise
         except:
-            if os.path.isfile("%s/file%08d.%s" % (fDir, len(self.downloaded), self.extension)): 
-                os.remove("%s/file%08d.%s" % (fDir, len(self.downloaded), self.extension))
+            if local_file != None:
+                local_file.close()
+            for x in xrange(10):
+                try:
+                    if os.path.isfile("%s/file%08d.%s" % (fDir, self.successCount, self.extension)): 
+                        os.remove("%s/file%08d.%s" % (fDir, self.successCount, self.extension))
+                    break
+                except:
+                    if x==9:
+                        raise
+                    time.sleep(1)
+            return
+        self.successCount += 1
          
     def signatureText(self):
         result = ""
