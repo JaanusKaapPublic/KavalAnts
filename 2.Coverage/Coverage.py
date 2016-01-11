@@ -13,15 +13,22 @@ class Coverage:
 	bbFiles = {}
 	bbFilesBreakpints = []
 	bbFilesData = {}
+	bbOriginalName = {}
 	modules = []
 	fileOutput = None
-	
+		
 	#Construct
 	def __init__(self):
 		self.debugger = Debug( bKillOnExit = True )
 		
 	def setVerbose(self, val):
 		self.verbose = val
+		
+	#cuts after .
+	def cutDot(self, input):
+		if input.find(".") == -1:
+			return input
+		return input[0:input.find(".")]
 
 	#load basic blocks
 	def loadBB(self, baseBbDir):
@@ -30,6 +37,10 @@ class Coverage:
 		for bbFile in os.listdir(baseBbDir):
 			f = open(baseBbDir + "/" + bbFile, "r")
 			fname = f.readline().strip().lower()
+			fnameOrig = fname
+			if ".dll" not in fname and ".exe" not in fname:  #Stupid hack to avoid problems in loading libs with other extensions then .dll
+				fname = self.cutDot(fname) + ".dll"
+			self.bbOriginalName[fname] = fnameOrig
 			self.bbFiles[fname] = count
 			self.bbFilesBreakpints.append({})
 			rvaHighest = 0
@@ -48,6 +59,8 @@ class Coverage:
 	#Register module (original exe image or dll)
 	def registerModule(self, filename, baseaddr):
 		filename = filename.lower()
+		if ".dll" not in filename and ".exe" not in filename:  #Stupid hack to avoid problems in loading libs with other extensions then .dll
+			filename = self.cutDot(filename) + ".dll"
 		if filename not in self.bbFiles:
 			return
 		if self.verbose:
@@ -76,7 +89,7 @@ class Coverage:
 		self.modules = []
 		self.fileOutput = open(filename, "w")
 		for image in self.bbFiles:
-			self.fileOutput.write("%s|%02X\n" % (image, self.bbFiles[image]))
+			self.fileOutput.write("%s|%02X\n" % (self.bbOriginalName[image], self.bbFiles[image]))
 		
 	def endFileRec(self):
 		self.fileOutput.close()		
@@ -101,7 +114,7 @@ class Coverage:
 				module = event.get_module()
 				if self.verbose:
 					print "DLL %s loaded on base %08X" % (module.get_name(), module.get_base())
-				self.registerModule(module.get_name()+".dll", module.get_base())
+				self.registerModule(self.cutDot(module.get_name())+".dll", module.get_base())
 			elif event.get_event_code() == win32.CREATE_PROCESS_DEBUG_EVENT:
 				tmp = event.get_filename().split("\\")
 				modName = tmp[len(tmp)-1]
