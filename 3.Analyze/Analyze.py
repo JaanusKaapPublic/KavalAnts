@@ -6,6 +6,7 @@ import time
 
 
 dir = ".\\input"
+tmpDir = ".\\tmp"
 output = ".\\output.txt"
 BBcount = 0
 modules = {}
@@ -36,8 +37,15 @@ for opt, arg in opts:
 	if opt in("-d"):
 		dir = arg	
 
+#Create tmp dirs
+if not os.path.exists(tmpDir + "0"):
+	os.makedirs(tmpDir + "0")
+if not os.path.exists(tmpDir + "1"):
+	os.makedirs(tmpDir + "1")
+		
 #Prep
 filelist = os.listdir(dir)
+tmpCount = 0x1
 		
 #First pass through
 lastTime = time.time()
@@ -73,48 +81,26 @@ print "  Time spent: %d sec" % (time.time() - lastTime)
 
 
 #Real analysis
-fout = open(output, 'w')
+freport = open(output, 'w')
+srcDir = dir
+destDir = tmpDir + "0"
 while BBcount>0:
 	best = 0;
-	bestName = None
-	
+	bestName = None	
 	lastTime = time.time()
-	#Scan
+	
+	#Find largest file
 	for fname in filelist:
 		if fname in results:
 			continue
-		current = 0
-		f = open(dir + "/" + fname)
-	
-		#module list
-		line = f.readline()
-		modules = {}
-		while line != "" and line[2] != "|":
-			moduleName = line[:line.find("|")].lower()
-			moduleCode = line[line.find("|")+1:line.find("|")+3]
-			modules[moduleCode] = moduleName
-			if moduleName not in basicblocks:
-				basicblocks[moduleName] = {}
-			line = f.readline()
-		
-		#basicblock
-		while line.strip() != "":
-			moduleCode = line[0:2]
-			bb = line[3:11]
-			moduleName = modules[moduleCode].lower()
-			if not basicblocks[moduleName][bb]:
-				current += 1
-			line = f.readline()
+		size = os.path.getsize(srcDir + "/" + fname)
+		if size > best:
+			best = size
+			bestName = fname			
 			
-		if current > best:
-			best = current
-			bestName = fname
-			
-		f.close()
-	
 	#Best coverage file
-	f = open(dir + "/" + bestName)
-	
+	f = open(srcDir + "/" + bestName)	
+	best = 0
 	#module list
 	line = f.readline()
 	modules = {}
@@ -124,8 +110,7 @@ while BBcount>0:
 		modules[moduleCode] = moduleName
 		if moduleName not in basicblocks:
 			basicblocks[moduleName] = {}
-		line = f.readline()
-		
+		line = f.readline()		
 	#basicblock
 	while line.strip() != "":
 		moduleCode = line[0:2]
@@ -133,12 +118,43 @@ while BBcount>0:
 		moduleName = modules[moduleCode].lower()
 		basicblocks[moduleName][bb] = True
 		line = f.readline()
-		
-	f.close()		
+		best+=1		
+	f.close()
+			
+	
+	#Remove covered blocks
+	for fname in filelist:
+		f = open(srcDir + "/" + fname, "r")
+		fout = open(destDir + "/" + fname, "w")	
+		#module list
+		line = f.readline()
+		modules = {}
+		while line != "" and line[2] != "|":
+			fout.write(line)
+			moduleName = line[:line.find("|")].lower()
+			moduleCode = line[line.find("|")+1:line.find("|")+3]
+			modules[moduleCode] = moduleName
+			if moduleName not in basicblocks:
+				basicblocks[moduleName] = {}
+			line = f.readline()		
+		#basicblock
+		while line.strip() != "":
+			moduleCode = line[0:2]
+			bb = line[3:11]
+			moduleName = modules[moduleCode].lower()
+			if not basicblocks[moduleName][bb]:
+				fout.write(line)
+			line = f.readline()			
+		f.close()
+		fout.close()
+	
 	BBcount -= best
 	results.append(bestName)
 	print "%06d[%03d sec]: %s covered %d basicblocks, %d left" % (len(results), (time.time() - lastTime), bestName, best, BBcount)
-	fout.write("%s\n" % bestName)
+	freport.write("%s\n" % bestName)
+	destDir = tmpDir + str(tmpCount)
+	tmpCount = tmpCount ^ 0x1
+	srcDir = tmpDir + str(tmpCount)
 
-fout.close()
+freport.close()
 	
