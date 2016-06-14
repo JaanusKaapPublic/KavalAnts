@@ -1,15 +1,20 @@
 from idautils import *
+from idaapi import *
 import os
 
-if not os.path.exists("KavalAntsBB"):
-    os.makedirs("KavalAntsBB")
+autoWait()
+
+baseDir = ".\"
+
+if not os.path.exists(baseDir + "KavalAntsBB"):
+    os.makedirs(baseDir + "KavalAntsBB")
 
 filename = idaapi.get_root_filename().lower()
 base = idaapi.get_imagebase()
 BBcount = 0
 Fcount = 0
 
-file = open("KavalAntsBB/" + filename + ".bb", 'w')
+file = open(baseDir + "KavalAntsBB/" + filename + ".bb", 'w')
 file.write(filename)
 for segment_ea in Segments():
 	segment = idaapi.getseg(segment_ea)
@@ -29,3 +34,4 @@ for segment_ea in Segments():
 			file.write("\n" + line)
 file.close()
 print "Discovered %d basic blocks in %d functions" % (BBcount, Fcount)
+qexit()
